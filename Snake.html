@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ILAMICHASE</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(to bottom, #061e07, #0c300d);
+            font-family: 'Press Start 2P', monospace;
+            color: #adff2f;
+            overflow: hidden;
+        }
+        #game-board-container {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        #game-board {
+            background-color: #14532d;
+            border: 4px solid #86ef7d;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        #game-board:hover {
+            transform: scale(1.04);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6);
+        }
+        #info-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 30px;
+        }
+        #info-box {
+            font-size: 1em;
+            color: #bbf7d0;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.7);
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #86ef7d;
+            display: flex;
+            justify-content: space-around;
+            width: 400px;
+            margin-bottom: 20px;
+        }
+        #message-box {
+            margin-top: 0;
+            font-size: 1.2em;
+            color: #bbf7d0;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.7);
+            animation: fadeIn 1s ease, pulse 2s infinite alternate;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            border: 2px solid #86ef7d;
+            width: 400px;
+            text-align: center;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes pulse {
+            from { transform: scale(1); }
+            to { transform: scale(1.06); }
+        }
+        .button-container {
+            display: flex;
+            gap: 15px;
+            margin-top: 25px;
+        }
+        .game-button {
+            padding: 14px 28px;
+            font-size: 1.1em;
+            font-family: 'Press Start 2P', monospace;
+            background-color: #4ade80;
+            color: #0c300d;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+            transition: background-color 0.3s ease, transform 0.1s ease, box-shadow 0.3s ease;
+        }
+        .game-button:hover {
+            background-color: #6ee7b7;
+            transform: scale(1.08);
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.5);
+        }
+        .game-button:active {
+            background-color: #16a34a;
+            transform: scale(0.92);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+        }
+    </style>
+</head>
+<body>
+    <div id="game-board-container">
+        <canvas id="game-board" width="400" height="400"></canvas>
+    </div>
+    <div id="info-container">
+        <div id="info-box">
+            <p id="score-display">Score: 0</p>
+            <p id="level-display">Level: 1</p>
+            <p id="lives-display">Lives: 3</p>
+            <p id="sound-display">Sound: On</p>
+        </div>
+        <div id="message-box"></div>
+    </div>
+    <div class="button-container">
+        <button id="start-button" class="game-button">Start</button>
+        <button id="pause-button" class="game-button">Pause</button>
+        <button id="sound-button" class="game-button">Sound On</button>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script>
+        const canvas = document.getElementById('game-board');
+        const ctx = canvas.getContext('2d');
+        const messageBox = document.getElementById('message-box');
+        const startButton = document.getElementById('start-button');
+        const pauseButton = document.getElementById('pause-button');
+        const soundButton = document.getElementById('sound-button');
+
+        const scoreDisplay = document.getElementById('score-display');
+        const levelDisplay = document.getElementById('level-display');
+        const livesDisplay = document.getElementById('lives-display');
+        const soundDisplay = document.getElementById('sound-display');
+
+
+        const gridSize = 20;
+        let snake = [{ x: 10, y: 10 }];
+        let food = { x: 15, y: 15 };
+        let direction = 'right';
+        let gameSpeed = 200;
+        let gameRunning = false;
+        let gameInterval;
+        let score = 0;
+        let soundEnabled = true;
+        let mutedText = "Sound On";
+        let level = 1;
+        const numLevels = 10;
+        let lives = 3;
+
+        let obstacles = [];
+        let passages = [];
+
+
+        // --- Sound Effects (Tone.js) ---
+        const synth = new Tone.Synth().toDestination();
+
+        function playEatSound() {
+            if (soundEnabled) {
+                synth.triggerAttackRelease("C6", "8n");
+            }
+        }
+
+        function playGameOverSound() {
+            if (soundEnabled) {
+                const now = Tone.now();
+                synth.triggerAttackRelease("C2", "8n", now);
+                synth.triggerAttackRelease("E2", "8n", now + 0.2);
+                synth.triggerAttackRelease("G2", "8n", now + 0.4);
+                synth.triggerAttackRelease("C3", "1n", now + 0.6);
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < snake.length; i++) {
+                ctx.fillStyle = i === 0 ? '#00ff00' : '#afdd96';
+                ctx.fillRect(
+                    snake[i].x * gridSize,
+                    snake[i].y * gridSize,
+                    gridSize,
+                    gridSize
+                );
+                ctx.strokeStyle = '#043d10';
+                ctx.strokeRect(
+                    snake[i].x * gridSize,
+                    snake[i].y * gridSize,
+                    gridSize,
+                    gridSize
+                );
+            }
+
+            ctx.fillStyle = '#ff006e';
+            ctx.fillRect(food.x * gridSize, food.y * gridSize, gridSize, gridSize);
+            ctx.strokeStyle = '#b30047';
+            ctx.strokeRect(food.x * gridSize, food.y * gridSize, gridSize, gridSize);
+
+            obstacles.forEach(obstacle => {
+                ctx.fillStyle = '#8b4513';
+                ctx.fillRect(obstacle.x * gridSize, obstacle.y * gridSize, gridSize, gridSize);
+                ctx.strokeStyle = '#a0522d';
+                ctx.strokeRect(obstacle.x * gridSize, obstacle.y * gridSize, gridSize, gridSize);
+            });
+
+            passages.forEach(passage => {
+                ctx.fillStyle = 'rgba(0, 0, 255, 0.5)';
+                ctx.fillRect(passage.x * gridSize, passage.y * gridSize, gridSize, gridSize);
+                ctx.strokeStyle = 'rgba(0, 0, 255, 0.7)';
+                ctx.strokeRect(passage.x * gridSize, passage.y * gridSize, gridSize, gridSize);
+            });
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            const head = { x: snake[0].x, y: snake[0].y };
+
+            switch (direction) {
+                case 'up':
+                    head.y--;
+                    break;
+                case 'down':
+                    head.y++;
+                    break;
+                case 'left':
+                    head.x--;
+                    break;
+                case 'right':
+                    head.x++;
+                    break;
+            }
+
+            let wallCollision = false;
+            obstacles.forEach(obstacle => {
+                if (head.x === obstacle.x && head.y === obstacle.y) {
+                    wallCollision = true;
+                }
+            });
+
+            let throughPassage = false;
+            let passageEnd = {x: head.x, y: head.y};
+            passages.forEach(passage => {
+                if (head.x === passage.x && head.y === passage.y) {
+                    throughPassage = true;
+                    passageEnd = passage.end;
+                }
+            });
+
+
+            if (
+                head.x < 0 ||
+                head.x >= canvas.width / gridSize ||
+                head.y < 0 ||
+                head.y >= canvas.height / gridSize ||
+                checkCollision(head) ||
+                wallCollision
+            ) {
+                if (!throughPassage) {
+                    lives--;
+                    if (lives <= 0) {
+                        gameOver();
+                        return;
+                    } else {
+                        // Reset snake and food,
+                        snake = [{x: 10, y: 10}];
+                        direction = 'right';
+                        food = {
+                            x: Math.floor(Math.random() * (canvas.width / gridSize)),
+                            y: Math.floor(Math.random() * (canvas.height / gridSize)),
+                        };
+                        gameSpeed = 200;
+                        clearInterval(gameInterval);
+                        gameInterval = setInterval(update, gameSpeed);
+                    }
+                } else {
+                    head.x = passageEnd.x;
+                    head.y = passageEnd.y;
+                }
+            }
+
+            snake.unshift(head);
+
+            if (head.x === food.x && head.y === food.y) {
+                playEatSound();
+                score += 10;
+                gameSpeed -= 10;
+                clearInterval(gameInterval);
+                gameInterval = setInterval(update, gameSpeed);
+                food = {
+                    x: Math.floor(Math.random() * (canvas.width / gridSize)),
+                    y: Math.floor(Math.random() * (canvas.height / gridSize)),
+                };
+                if (snake.length % 5 === 0 && level < numLevels) {
+                    level++;
+                    setupLevel();
+                }
+            } else {
+                snake.pop();
+            }
+
+            draw();
+            scoreDisplay.textContent = `Score: ${score}`;
+            levelDisplay.textContent = `Level: ${level}`;
+            livesDisplay.textContent = `Lives: ${lives}`;
+            soundDisplay.textContent = `Sound: ${mutedText}`;
+
+        }
+
+        function checkCollision(head) {
+            for (let i = 1; i < snake.length; i++) {
+                if (head.x === snake[i].x && head.y === snake[i].y) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function gameOver() {
+            playGameOverSound();
+            gameRunning = false;
+            clearInterval(gameInterval);
+            messageBox.textContent = `Game Over! Press Start to play again.`;
+            snake = [{ x: 10, y: 10 }];
+            direction = 'right';
+            score = 0;
+            gameSpeed = 200;
+            level = 1;
+            lives = 3;
+            obstacles = [];
+            passages = [];
+        }
+
+        function startGame() {
+            if (gameRunning) return;
+            gameRunning = true;
+            messageBox.textContent = 'Game Started!';
+            clearInterval(gameInterval);
+            gameInterval = setInterval(update, gameSpeed);
+            score = 0;
+            level = 1;
+            lives = 3;
+            setupLevel();
+        }
+
+        function pauseGame() {
+            gameRunning = false;
+            clearInterval(gameInterval);
+            messageBox.textContent = 'Game Paused!';
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            soundButton.textContent = soundEnabled ? "Sound On" : "Sound Off";
+            mutedText = soundEnabled ? "Sound On" : "Sound Off";
+            messageBox.textContent = ``;
+            soundDisplay.textContent = `Sound: ${mutedText}`;
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (!gameRunning) return;
+            switch (event.key) {
+                case 'ArrowUp':
+                    if (direction !== 'down') direction = 'up';
+                    break;
+                case 'ArrowDown':
+                    if (direction !== 'up') direction = 'down';
+                    break;
+                case 'ArrowLeft':
+                    if (direction !== 'right') direction = 'left';
+                    break;
+                case 'ArrowRight':
+                    if (direction !== 'left') direction = 'right';
+                    break;
+            }
+        });
+
+        startButton.addEventListener('click', startGame);
+        pauseButton.addEventListener('click', pauseGame);
+        soundButton.addEventListener('click', toggleSound);
+
+        draw();
+        setupLevel();
+    </script>
+</body>
+</html>
